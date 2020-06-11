@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "label": "Run build script",
+      "command": "call ./scripts/build.bat",
+      "args": [],
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "type": "process",
+      "label": "Run",
+      "command": "./build/neutron.exe"
+    }
+  ]
+}

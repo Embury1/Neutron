@@ -1,0 +1,4 @@
+*.dae
+*.obj
+*.fbx
+build/
