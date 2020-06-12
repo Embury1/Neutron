@@ -14,6 +14,15 @@ void GLAPIENTRY dbg_msg(
   fprintf(stderr, "%s0x%x 0x%x %s\n", type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR ** " : "", type, severity, message);
 }
 
+internal PlatformState* platform_state_pointer(const GameMemory *memory)
+{
+  return (PlatformState*)((uint8*)memory->persistent_store);
+}
+
+internal GameState* game_state_pointer(const GameMemory *memory)
+{
+  return (GameState*)((uint8*)memory->persistent_store + sizeof(PlatformState));
+}
 
 internal void aimat4_to_glm(const aiMatrix4x4 *ai_mat, glm::mat4 *glm_mat)
 {
@@ -83,20 +92,24 @@ internal void aimat4_to_glm(const aiMatrix4x4 *ai_mat, glm::mat4 *glm_mat)
 //   }
 // }
 
-internal void process_ainode(GameState *state, const aiNode *ainode, const aiScene *aiscene)
+internal void process_ainode(GameMemory *memory, const aiNode *ainode, const aiScene *aiscene)
 {
-  assert((sizeof(state->meshes) - state->mesh_count) >= ainode->mNumMeshes);
+  GameState *state = game_state_pointer(memory);
+  assert((nnlen(state->meshes) - state->mesh_count) >= ainode->mNumMeshes);
   for (uint32 i = 0; i < ainode->mNumMeshes; i++) {
     aiMesh *aimesh = aiscene->mMeshes[ainode->mMeshes[i]];
     assert(aimesh->mPrimitiveTypes == aiPrimitiveType_TRIANGLE);
     Mesh *mesh = &state->meshes[state->mesh_count];
 
+    glGenVertexArrays(1, &mesh->vao);
+    glGenBuffers(1, &mesh->vbo);
+    glGenBuffers(1, &mesh->ebo);
+    glBindVertexArray(mesh->vao);
+
     const char *mesh_name = ainode->mName.C_Str();
     strncpy_s(mesh->name, sizeof(mesh->name), mesh_name, sizeof(mesh_name));
 
-    Vertex vertices[kilobytes(10)] = {};
-    assert(sizeof(vertices) >= aimesh->mNumVertices);
-
+    Vertex *vertices = (Vertex*)memory->transient_store;
     for (uint32 i = 0; i < aimesh->mNumVertices; i++) {
       vertices[i].position.x = aimesh->mVertices[i].x;
       vertices[i].position.y = aimesh->mVertices[i].y;
@@ -116,9 +129,46 @@ internal void process_ainode(GameState *state, const aiNode *ainode, const aiSce
       mesh->vertex_count++;
     }
 
-    uint32 indices[kilobytes(10)] = {};
-    assert(sizeof(indices) >= aimesh->mNumFaces * 3);
+    Bone *bones = (Bone*)memory->transient_store;
+    for (uint32 i = 0; i < aimesh->mNumBones; i++) {
+      aiBone *aibone = aimesh->mBones[i];
 
+      const char *bone_name = aibone->mName.C_Str();
+      uint8 bone_index = UCHAR_MAX;
+
+      for (uint32 j = 0; j < mesh->bone_count; j++) {
+        if (strncmp(bones[j].name, bone_name, sizeof(bones[j].name)) == 0) {
+          bone_index = j;
+          break;
+        }
+      }
+
+      if (bone_index == UCHAR_MAX) {
+        bone_index = mesh->bone_count;
+        Bone *bone = &bones[bone_index];
+        // strncpy_s(bone->name, sizeof(bone->name) - 1, bone_name, strnlen_s(bone_name, sizeof(bone->name) - 1));
+        nnstrcpy(bone->name, bone_name);
+        aimat4_to_glm(&aibone->mOffsetMatrix, &bone->offset);
+        mesh->bone_count++;
+      }
+
+      for (uint32 j = 0; j < aibone->mNumWeights; j++) {
+        aiVertexWeight *aiweight = &aibone->mWeights[j];
+        Vertex *vertex = &vertices[aiweight->mVertexId];
+        for (uint8 k = 0; k < WEIGHT_COUNT_LIMIT; k++) {
+          if (vertex->bone_weights[k] == 0.0) {
+            vertex->bone_ids[k] = bone_index;
+            vertex->bone_weights[k] = aiweight->mWeight;
+            break;
+          }
+        }
+      }
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
+    glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertices, GL_STATIC_DRAW);
+
+    uint32 *indices = (uint32*)memory->transient_store;
     for (uint32 i = 0; i < aimesh->mNumFaces; i++) {
       aiFace *aiface = &aimesh->mFaces[i];
       for (uint32 j = 0; j < aiface->mNumIndices; j++) {
@@ -127,51 +177,7 @@ internal void process_ainode(GameState *state, const aiNode *ainode, const aiSce
       }
     }
 
-    // if (aimesh->mNumBones > 0)
-    //   mesh->bones = &state->bones[state->bone_count];
-
-    // for (uint32 i = 0; i < aimesh->mNumBones; i++) {
-    //   aiBone *aibone = aimesh->mBones[i];
-
-    //   const char *bone_name = aibone->mName.C_Str();
-    //   uint16 bone_index = USHRT_MAX;
-
-    //   for (uint32 j = 0; j < state->bone_count; j++) {
-    //     if (strncmp(state->bones[j].name, bone_name, sizeof(state->bones[j].name)) == 0) {
-    //       bone_index = j;
-    //       break;
-    //     }
-    //   }
-
-    //   if (bone_index == USHRT_MAX) {
-    //     bone_index = state->bone_count;
-    //     Bone *bone = &state->bones[bone_index];
-    //     // strncpy_s(bone->name, sizeof(bone->name) - 1, bone_name, strnlen_s(bone_name, sizeof(bone->name) - 1));
-    //     nnstrcpy(bone->name, bone_name);
-    //     aimat4_to_glm(&aibone->mOffsetMatrix, &bone->offset);
-    //     state->bone_count++;
-    //     mesh->bone_count++;
-    //   }
-
-    //   for (uint32 j = 0; j < aibone->mNumWeights; j++) {
-    //     aiVertexWeight *aiweight = &aibone->mWeights[j];
-    //     Vertex *vertex = &mesh->vertices[aiweight->mVertexId];
-    //     assert(vertex->weight_count < WEIGHT_COUNT_LIMIT);
-    //     vertex->bone_ids[vertex->weight_count] = bone_index;
-    //     vertex->weights[vertex->weight_count] = aiweight->mWeight;
-    //     vertex->weight_count++;
-    //   }
-    // }
-
     state->mesh_count++;
-
-    glGenVertexArrays(1, &mesh->vao);
-    glGenBuffers(1, &mesh->vbo);
-    glGenBuffers(1, &mesh->ebo);
-    glBindVertexArray(mesh->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
-    glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertices, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->index_count * sizeof(uint32), indices, GL_STATIC_DRAW);
@@ -195,11 +201,11 @@ internal void process_ainode(GameState *state, const aiNode *ainode, const aiSce
   }
 
   for (uint32 i = 0; i < ainode->mNumChildren; i++) {
-    process_ainode(state, ainode->mChildren[i], aiscene);
+    process_ainode(memory, ainode->mChildren[i], aiscene);
   }
 }
 
-void load_model(const char *path, GameState *state)
+void load_model(const char *path, GameMemory *memory)
 {
   aiPropertyStore *props = aiCreatePropertyStore();
   aiSetImportPropertyInteger(props, AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT);
@@ -221,7 +227,7 @@ void load_model(const char *path, GameState *state)
     return;
   }
 
-  process_ainode(state, aiscene->mRootNode, aiscene);
+  process_ainode(memory, aiscene->mRootNode, aiscene);
   aiReleasePropertyStore(props);
 }
 
@@ -363,8 +369,8 @@ int32 main(int32 argc, int8 **argv)
   glCullFace(GL_BACK);
 
   GameMemory memory = {};
-  memory.transient_store_size = gigabytes(4);
   memory.persistent_store_size = gigabytes(1);
+  memory.transient_store_size = gigabytes(4);
 
 #ifdef NN_INTERNAL
   LPVOID base_addr = (LPVOID)terabytes(2);
@@ -381,8 +387,8 @@ int32 main(int32 argc, int8 **argv)
 
   memory.transient_store = (uint8*)memory.persistent_store + memory.persistent_store_size;
 
-  PlatformState *platform_state = (PlatformState*)memory.persistent_store;
-  GameState *game_state = (GameState*)((uint8*)memory.persistent_store + sizeof(PlatformState));
+  PlatformState *platform_state = platform_state_pointer(&memory);
+  GameState *game_state = game_state_pointer(&memory);
 
   platform_state->L = luaL_newstate();
   luaL_openlibs(platform_state->L);
@@ -392,7 +398,7 @@ int32 main(int32 argc, int8 **argv)
   // load_model("test.dae", game_state);
   // load_model("cube.dae", game_state);
   // load_model("basemodel.dae", game_state);
-  load_model("rig.dae", game_state);
+  load_model("rig.dae", &memory);
 
   Camera camera = {
     { 5.0f, 7.0f, 5.0f },

@@ -40,7 +40,7 @@ extern "C" {
 #define nnlen(arr)              (sizeof((arr)) / (sizeof((arr)[0])))
 #define minimum(a, b)           ((a) < (b) ? (a) : (b))
 #define maximum(a, b)           ((a) > (b) ? (a) : (b))
-#define nnstrcpy(dst, src)        (strncpy_s((dst), sizeof((dst)) - 1, (src), strnlen_s((src), sizeof((dst)) - 1)))
+#define nnstrcpy(dst, src)      (strncpy_s((dst), sizeof((dst)) - 1, (src), strnlen_s((src), sizeof((dst)) - 1)))
 
 #define WEIGHT_COUNT_LIMIT 8
 
@@ -67,10 +67,17 @@ struct PlatformState {
   lua_State *L;
 };
 
+struct Bone {
+  char name[32];
+  glm::mat4 offset;
+};
+
 struct Vertex {
   glm::vec3 position;
   glm::vec3 normal;
-  glm::vec3 tex_coords;
+  glm::vec2 tex_coords;
+  uint32 bone_ids[WEIGHT_COUNT_LIMIT];
+  real32 bone_weights[WEIGHT_COUNT_LIMIT];
 };
 
 struct Texture {
@@ -80,9 +87,10 @@ struct Texture {
 };
 
 struct Mesh {
-  char name[24];
   uint32 vertex_count;
   uint32 index_count;
+  uint32 bone_count;
+  char name[24];
   Texture *textures;
   uint32 texture_count;
   uint32 vao;
