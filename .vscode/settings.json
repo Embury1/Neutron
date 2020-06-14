@@ -48,6 +48,8 @@
     "locale": "cpp",
     "xlocmes": "cpp",
     "xlocmon": "cpp",
-    "xloctime": "cpp"
+    "xloctime": "cpp",
+    "array": "cpp",
+    "vector": "cpp"
   }
 }

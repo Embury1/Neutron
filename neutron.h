@@ -42,7 +42,7 @@ extern "C" {
 #define maximum(a, b)           ((a) > (b) ? (a) : (b))
 #define nnstrcpy(dst, src)      (strncpy_s((dst), sizeof((dst)) - 1, (src), strnlen_s((src), sizeof((dst)) - 1)))
 
-#define WEIGHT_COUNT_LIMIT 8
+#define WEIGHT_COUNT_LIMIT 4
 
 typedef int8_t        int8;
 typedef int16_t       int16;
@@ -89,6 +89,7 @@ struct Texture {
 struct Mesh {
   uint32 vertex_count;
   uint32 index_count;
+  Bone bones[64];
   uint32 bone_count;
   char name[24];
   Texture *textures;

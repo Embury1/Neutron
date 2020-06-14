@@ -101,84 +101,92 @@ internal void process_ainode(GameMemory *memory, const aiNode *ainode, const aiS
     assert(aimesh->mPrimitiveTypes == aiPrimitiveType_TRIANGLE);
     Mesh *mesh = &state->meshes[state->mesh_count];
 
-    glGenVertexArrays(1, &mesh->vao);
-    glGenBuffers(1, &mesh->vbo);
-    glGenBuffers(1, &mesh->ebo);
-    glBindVertexArray(mesh->vao);
-
+    // Mesh properties
     const char *mesh_name = ainode->mName.C_Str();
-    strncpy_s(mesh->name, sizeof(mesh->name), mesh_name, sizeof(mesh_name));
+    nnstrcpy(mesh->name, mesh_name);
 
+    // Vertices
+    assert(memory->transient_store_size >= (aimesh->mNumVertices * sizeof(Vertex)));
     Vertex *vertices = (Vertex*)memory->transient_store;
-    for (uint32 i = 0; i < aimesh->mNumVertices; i++) {
-      vertices[i].position.x = aimesh->mVertices[i].x;
-      vertices[i].position.y = aimesh->mVertices[i].y;
-      vertices[i].position.z = aimesh->mVertices[i].z;
+    for (uint32 j = 0; j < aimesh->mNumVertices; j++) {
+      vertices[j].position.x = aimesh->mVertices[j].x;
+      vertices[j].position.y = aimesh->mVertices[j].y;
+      vertices[j].position.z = aimesh->mVertices[j].z;
 
       if (aimesh->mNormals) {
-        vertices[i].normal.x = aimesh->mNormals[i].x;
-        vertices[i].normal.y = aimesh->mNormals[i].y;
-        vertices[i].normal.z = aimesh->mNormals[i].z;
+        vertices[j].normal.x = aimesh->mNormals[j].x;
+        vertices[j].normal.y = aimesh->mNormals[j].y;
+        vertices[j].normal.z = aimesh->mNormals[j].z;
       }
 
       if (aimesh->mTextureCoords[0]) {
-        vertices[i].tex_coords.x = aimesh->mTextureCoords[0][i].x;
-        vertices[i].tex_coords.y = aimesh->mTextureCoords[0][i].y;
+        vertices[j].tex_coords.x = aimesh->mTextureCoords[0][j].x;
+        vertices[j].tex_coords.y = aimesh->mTextureCoords[0][j].y;
       }
 
       mesh->vertex_count++;
     }
 
-    Bone *bones = (Bone*)memory->transient_store;
-    for (uint32 i = 0; i < aimesh->mNumBones; i++) {
-      aiBone *aibone = aimesh->mBones[i];
+    // Bones
+    assert(nnlen(mesh->bones) >= (aimesh->mNumBones));
+    for (uint32 j = 0; j < aimesh->mNumBones; j++) {
+      aiBone *aibone = aimesh->mBones[j];
 
       const char *bone_name = aibone->mName.C_Str();
       uint8 bone_index = UCHAR_MAX;
 
-      for (uint32 j = 0; j < mesh->bone_count; j++) {
-        if (strncmp(bones[j].name, bone_name, sizeof(bones[j].name)) == 0) {
-          bone_index = j;
+      for (uint32 k = 0; k < mesh->bone_count; k++) {
+        if (strncmp(mesh->bones[k].name, bone_name, sizeof(mesh->bones[k].name)) == 0) {
+          bone_index = k;
           break;
         }
       }
 
       if (bone_index == UCHAR_MAX) {
         bone_index = mesh->bone_count;
-        Bone *bone = &bones[bone_index];
+        Bone *bone = &mesh->bones[bone_index];
         // strncpy_s(bone->name, sizeof(bone->name) - 1, bone_name, strnlen_s(bone_name, sizeof(bone->name) - 1));
         nnstrcpy(bone->name, bone_name);
         aimat4_to_glm(&aibone->mOffsetMatrix, &bone->offset);
         mesh->bone_count++;
       }
 
-      for (uint32 j = 0; j < aibone->mNumWeights; j++) {
-        aiVertexWeight *aiweight = &aibone->mWeights[j];
+      for (uint32 k = 0; k < aibone->mNumWeights; k++) {
+        aiVertexWeight *aiweight = &aibone->mWeights[k];
         Vertex *vertex = &vertices[aiweight->mVertexId];
-        for (uint8 k = 0; k < WEIGHT_COUNT_LIMIT; k++) {
-          if (vertex->bone_weights[k] == 0.0) {
-            vertex->bone_ids[k] = bone_index;
-            vertex->bone_weights[k] = aiweight->mWeight;
+        for (uint8 l = 0; l < WEIGHT_COUNT_LIMIT; l++) {
+          if (vertex->bone_weights[l] == 0.0) {
+            vertex->bone_ids[l] = bone_index;
+            vertex->bone_weights[l] = aiweight->mWeight;
             break;
           }
         }
       }
     }
 
+    // Fill vertex buffer
+    glGenBuffers(1, &mesh->vbo);
     glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
     glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertices, GL_STATIC_DRAW);
 
+    // Indices
+    assert(memory->transient_store_size >= (aimesh->mNumFaces * 3 * sizeof(uint32)));
     uint32 *indices = (uint32*)memory->transient_store;
-    for (uint32 i = 0; i < aimesh->mNumFaces; i++) {
-      aiFace *aiface = &aimesh->mFaces[i];
-      for (uint32 j = 0; j < aiface->mNumIndices; j++) {
-        indices[i * 3 + j] = aiface->mIndices[j];
+    for (uint32 j = 0; j < aimesh->mNumFaces; j++) {
+      aiFace *aiface = &aimesh->mFaces[j];
+      for (uint32 k = 0; k < aiface->mNumIndices; k++) {
+        indices[j * 3 + k] = aiface->mIndices[k];
         mesh->index_count++;
       }
     }
 
     state->mesh_count++;
 
+    glGenVertexArrays(1, &mesh->vao);
+    glBindVertexArray(mesh->vao);
+
+    // Remember, the target GL_ELEMENT_ARRAY_BUFFER sets its state on the VAO, so make sure its bound first!
+    glGenBuffers(1, &mesh->ebo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->index_count * sizeof(uint32), indices, GL_STATIC_DRAW);
 
@@ -191,11 +199,11 @@ internal void process_ainode(GameMemory *memory, const aiNode *ainode, const aiS
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6 * sizeof(real32)));
 
-    // glEnableVertexAttribArray(3);
-    // glVertexAttribIPointer(3, 8, GL_UNSIGNED_INT, sizeof(Vertex), (void*)32);
+    glEnableVertexAttribArray(3);
+    glVertexAttribIPointer(3, 4, GL_UNSIGNED_INT, sizeof(Vertex), (void*)(8 * sizeof(real32)));
 
-    // glEnableVertexAttribArray(4);
-    // glVertexAttribPointer(4, 8, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)64);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(real32) + 4 * sizeof(uint32)));
 
     glBindVertexArray(0);
   }
@@ -406,32 +414,35 @@ int32 main(int32 argc, int8 **argv)
     { 0.0f, 1.0f, 0.0f }
   };
 
-  glUseProgram(game_state->shaders[0].id);
+  Shader *shader = &game_state->shaders[0];
+  glUseProgram(shader->id);
 
   camera.view = glm::lookAt(camera.position, camera.target, camera.up);
-  glUniformMatrix4fv(glGetUniformLocation(game_state->shaders[0].id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+  glUniformMatrix4fv(glGetUniformLocation(shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
 
   glm::mat4 proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.01f, 1000.0f);
-  glUniformMatrix4fv(glGetUniformLocation(game_state->shaders[0].id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
+  glUniformMatrix4fv(glGetUniformLocation(shader->id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
 
-  glm::mat4 model = glm::mat4(1.0f);
+  glm::mat4 model(1.0f);
   model = glm::translate(model, glm::vec3(1.0f, 1.0f, 0.0f));
-  glUniformMatrix4fv(glGetUniformLocation(game_state->shaders[0].id, "model"), 1, GL_FALSE, glm::value_ptr(model));
+  glUniformMatrix4fv(glGetUniformLocation(shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
 
   while (!glfwWindowShouldClose(window)) {
     glClearColor(0.75f, 1.0f, 0.01f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    real64 time = glfwGetTime();
 
-    const float radius = 10.0f;
-    camera.position.x = glm::sin(glfwGetTime()) * radius;
-    camera.position.z = glm::cos(glfwGetTime()) * radius;
+    const float radius(10.0f);
+    camera.position.x = glm::sin(time) * radius;
+    camera.position.z = glm::cos(time) * radius;
     camera.view = glm::lookAt(camera.position, camera.target, camera.up);
-    glUniformMatrix4fv(glGetUniformLocation(game_state->shaders[0].id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+    glUniformMatrix4fv(glGetUniformLocation(shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
 
+    glUseProgram(shader->id);
     for (uint32 i = 0; i < game_state->mesh_count; i++) {
-      glUseProgram(game_state->shaders[0].id);
-      glBindVertexArray(game_state->meshes[i].vao);
-      glDrawElements(GL_TRIANGLES, game_state->meshes[i].index_count, GL_UNSIGNED_INT, 0);
+      Mesh *mesh = &game_state->meshes[i];
+      glBindVertexArray(mesh->vao);
+      glDrawElements(GL_TRIANGLES, mesh->index_count, GL_UNSIGNED_INT, 0);
       glBindVertexArray(0);
     }
 
