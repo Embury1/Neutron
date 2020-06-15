@@ -1,19 +1,38 @@
 import bmesh
 import bpy
 import os
+import struct
 
 os.system('cls')
+filepath = '{}.nnm'.format(os.path.splitext(bpy.data.filepath)[0])
 
-scene = bpy.context.scene
-for obj in scene.objects:
-    if obj.type != 'MESH':
-        continue
-    print(obj.name)
-    mesh = bmesh.new()
-    mesh.from_mesh(obj.data)
-    bmesh.ops.triangulate(mesh, faces=mesh.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
-    for v in mesh.verts:
-        print(v.index, [v for v in v.co])
-    for f in mesh.faces:
-        print([v.index for v in f.verts])
+with open(filepath, 'wb') as file:
+    for obj in bpy.context.scene.objects:
+        if obj.type != 'MESH':
+            continue
 
+        mesh_name = obj.name.encode('utf-8')
+        file.write(struct.pack('<H', len(mesh_name)))
+        file.write(mesh_name)
+
+        mesh = bmesh.new()
+        mesh.from_mesh(obj.data)
+        bmesh.ops.triangulate(mesh, faces=mesh.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
+
+        file.write(struct.pack('<H', len(mesh.verts)))
+        file.write(struct.pack('<H', len(mesh.verts)))
+
+        for v in mesh.verts:
+            if not v.is_valid or v.is_wire:
+                continue
+
+            file.write(struct.pack('<fff', *v.co.xyz))
+            file.write(struct.pack('<fff', *v.normal))
+
+        file.write(struct.pack('<H', len(mesh.faces) * 3))
+
+        for f in mesh.faces:
+            if not f.is_valid:
+                continue
+
+            file.write(struct.pack('<fff', *[v.index for v in f.verts]))

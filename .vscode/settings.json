@@ -1,5 +1,5 @@
 {
-  "C_Cpp.errorSquiggles": "Disabled",
+  "C_Cpp.errorSquiggles": "EnabledIfIncludesResolve",
   "files.associations": {
     "*.css": "postcss",
     "cctype": "cpp",
@@ -51,5 +51,6 @@
     "xloctime": "cpp",
     "array": "cpp",
     "vector": "cpp"
-  }
+  },
+  "python.pythonPath": "C:\\Users\\Embury\\AppData\\Local\\Programs\\Python\\Python37\\python.exe;"
 }
