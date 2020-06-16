@@ -1,4 +1,5 @@
 *.dae
 *.obj
 *.fbx
+*.nnm
 build/

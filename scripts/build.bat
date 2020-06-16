@@ -2,7 +2,7 @@
 
 del *.dae 2> NUL
 
-for %%G in ("n:\assets\*.dae") do (
+for %%G in ("n:\assets\*.nnm") do (
   mklink "n:\src\%%~nxG" "%%~G"
 )
 

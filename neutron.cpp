@@ -239,6 +239,51 @@ void load_model(const char *path, GameMemory *memory)
   aiReleasePropertyStore(props);
 }
 
+void load_model_nnm(const char *path, GameMemory *memory)
+{
+  HANDLE file = CreateFileA(
+    path,
+    GENERIC_READ,
+    FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+    null,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_READONLY,
+    null
+  );
+
+  if (file == INVALID_HANDLE_VALUE) {
+    DWORD error = GetLastError();
+    if (error == ERROR_PATH_NOT_FOUND || error == ERROR_FILE_NOT_FOUND)
+      printf("%s was not found\n", path);
+    return;
+  }
+
+  DWORD bytes_read;
+  char buf[kilobytes(500)] = {};
+
+  if (!ReadFile(
+    file,
+    buf,
+    sizeof(buf),
+    &bytes_read,
+    null
+  ) || !bytes_read) {
+    printf("%s could not be read\n", path);
+    return;
+  }
+
+  char *cursor = buf;
+
+  uint16 mesh_name_len = (uint16)*cursor;
+  cursor += sizeof(uint16);
+
+  char mesh_name[USHRT_MAX];
+  strncpy_s(mesh_name, sizeof(mesh_name), cursor, mesh_name_len);
+  cursor += mesh_name_len;
+
+
+}
+
 void load_shader(const char *vs_path, const char *fs_path, GameState *state)
 {
   HANDLE vs_file = CreateFileA(
@@ -406,7 +451,8 @@ int32 main(int32 argc, int8 **argv)
   // load_model("test.dae", game_state);
   // load_model("cube.dae", game_state);
   // load_model("basemodel.dae", game_state);
-  load_model("rig.dae", &memory);
+  // load_model("rig.dae", &memory);
+  load_model_nnm("rig.nnm", &memory);
 
   Camera camera = {
     { 5.0f, 7.0f, 5.0f },
