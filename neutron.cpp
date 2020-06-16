@@ -259,12 +259,12 @@ void load_model_nnm(const char *path, GameMemory *memory)
   }
 
   DWORD bytes_read;
-  char buf[kilobytes(500)] = {};
+  char buffer[kilobytes(500)] = {};
 
   if (!ReadFile(
     file,
-    buf,
-    sizeof(buf),
+    buffer,
+    sizeof(buffer),
     &bytes_read,
     null
   ) || !bytes_read) {
@@ -272,16 +272,73 @@ void load_model_nnm(const char *path, GameMemory *memory)
     return;
   }
 
-  char *cursor = buf;
+  GameState *state = game_state_pointer(memory);
+  Mesh *mesh = &state->meshes[state->mesh_count++];
+  char *cursor = buffer;
 
-  uint16 mesh_name_len = (uint16)*cursor;
-  cursor += sizeof(uint16);
+  uint8 mesh_name_len = (uint8)*cursor;
+  cursor += sizeof(uint8);
 
-  char mesh_name[USHRT_MAX];
+  char mesh_name[UCHAR_MAX];
   strncpy_s(mesh_name, sizeof(mesh_name), cursor, mesh_name_len);
   cursor += mesh_name_len;
 
+  mesh->vertex_count = (uint8)cursor[0] + ((uint8)cursor[1] << 8);
+  cursor += sizeof(uint16);
 
+  assert(memory->transient_store_size >= (mesh->vertex_count * sizeof(Vertex)));
+  Vertex *vertex = (Vertex*)memory->transient_store;
+  real32 *vertices = (real32*)cursor;
+  for (uint16 i = 0; i < mesh->vertex_count; i++) {
+    vertex[i].position.x = vertices[i * 6];
+    vertex[i].position.y = vertices[i * 6 + 1];
+    vertex[i].position.z = vertices[i * 6 + 2];
+    vertex[i].normal.x = vertices[i * 6 + 3];
+    vertex[i].normal.y = vertices[i * 6 + 4];
+    vertex[i].normal.z = vertices[i * 6 + 5];
+    cursor += 6 * sizeof(real32);
+  }
+  
+  glGenBuffers(1, &mesh->vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
+  glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertices, GL_STATIC_DRAW);
+
+  mesh->index_count = (uint8)cursor[0] + ((uint8)cursor[1] << 8);
+  cursor += sizeof(uint16);
+
+  assert(memory->transient_store_size >= (mesh->index_count * sizeof(uint32)));
+  uint32 *indices = (uint32*)memory->transient_store;
+  memcpy_s(
+    indices,
+    mesh->index_count * sizeof(uint32),
+    (uint32*)cursor,
+    mesh->index_count * sizeof(uint32)
+  );
+
+  glGenVertexArrays(1, &mesh->vao);
+  glBindVertexArray(mesh->vao);
+
+  // Remember, the target GL_ELEMENT_ARRAY_BUFFER sets its state on the VAO, so make sure its bound first!
+  glGenBuffers(1, &mesh->ebo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ebo);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->index_count * sizeof(uint32), indices, GL_STATIC_DRAW);
+
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(real32)));
+
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6 * sizeof(real32)));
+
+  glEnableVertexAttribArray(3);
+  glVertexAttribIPointer(3, 4, GL_UNSIGNED_INT, sizeof(Vertex), (void*)(8 * sizeof(real32)));
+
+  glEnableVertexAttribArray(4);
+  glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(real32) + 4 * sizeof(uint32)));
+
+  glBindVertexArray(0);
 }
 
 void load_shader(const char *vs_path, const char *fs_path, GameState *state)

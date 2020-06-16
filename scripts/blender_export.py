@@ -12,7 +12,7 @@ with open(filepath, 'wb') as file:
             continue
 
         mesh_name = obj.name.encode('utf-8')
-        file.write(struct.pack('<H', len(mesh_name)))
+        file.write(struct.pack('<B', len(mesh_name)))
         print(len(mesh_name))
         file.write(mesh_name)
         print(mesh_name)
@@ -22,7 +22,6 @@ with open(filepath, 'wb') as file:
         bmesh.ops.triangulate(mesh, faces=mesh.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
 
         file.write(struct.pack('<H', len(mesh.verts)))
-        print(len(mesh.verts))
 
         for v in mesh.verts:
             if not v.is_valid or v.is_wire:
@@ -31,14 +30,11 @@ with open(filepath, 'wb') as file:
             file.write(struct.pack('<fff', *v.co.xyz))
             print(*v.co.xyz)
             file.write(struct.pack('<fff', *v.normal))
-            print(*v.normal)
 
         file.write(struct.pack('<H', len(mesh.faces) * 3))
-        print(len(mesh.faces) * 3)
 
         for f in mesh.faces:
             if not f.is_valid:
                 continue
 
-            file.write(struct.pack('<fff', *[v.index for v in f.verts]))
-            print(*[v.index for v in f.verts])
+            file.write(struct.pack('<III', *[v.index for v in f.verts]))
