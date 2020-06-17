@@ -287,21 +287,21 @@ void load_model_nnm(const char *path, GameMemory *memory)
   cursor += sizeof(uint16);
 
   assert(memory->transient_store_size >= (mesh->vertex_count * sizeof(Vertex)));
-  Vertex *vertex = (Vertex*)memory->transient_store;
-  real32 *vertices = (real32*)cursor;
+  Vertex *vertices = (Vertex*)memory->transient_store;
+  real32 *real32_cursor = (real32*)cursor;
   for (uint16 i = 0; i < mesh->vertex_count; i++) {
-    vertex[i].position.x = vertices[i * 6];
-    vertex[i].position.y = vertices[i * 6 + 1];
-    vertex[i].position.z = vertices[i * 6 + 2];
-    vertex[i].normal.x = vertices[i * 6 + 3];
-    vertex[i].normal.y = vertices[i * 6 + 4];
-    vertex[i].normal.z = vertices[i * 6 + 5];
+    vertices[i].position.x = real32_cursor[i * 6];
+    vertices[i].position.y = real32_cursor[i * 6 + 1];
+    vertices[i].position.z = real32_cursor[i * 6 + 2];
+    vertices[i].normal.x = real32_cursor[i * 6 + 3];
+    vertices[i].normal.y = real32_cursor[i * 6 + 4];
+    vertices[i].normal.z = real32_cursor[i * 6 + 5];
     cursor += 6 * sizeof(real32);
   }
   
   glGenBuffers(1, &mesh->vbo);
   glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
-  glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertex, GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertices, GL_STATIC_DRAW);
 
   mesh->index_count = (uint8)cursor[0] + ((uint8)cursor[1] << 8);
   cursor += sizeof(uint16);
