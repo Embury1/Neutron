@@ -301,7 +301,7 @@ void load_model_nnm(const char *path, GameMemory *memory)
   
   glGenBuffers(1, &mesh->vbo);
   glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
-  glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertices, GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertex, GL_STATIC_DRAW);
 
   mesh->index_count = (uint8)cursor[0] + ((uint8)cursor[1] << 8);
   cursor += sizeof(uint16);
