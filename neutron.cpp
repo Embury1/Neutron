@@ -277,7 +277,7 @@ void load_model_nnm(const char *path, GameMemory *memory)
   char *cursor = buffer;
 
   uint8 mesh_name_len = (uint8)*cursor;
-  cursor += sizeof(uint8);
+  cursor++;
 
   char mesh_name[UCHAR_MAX];
   strncpy_s(mesh_name, sizeof(mesh_name), cursor, mesh_name_len);
@@ -288,15 +288,25 @@ void load_model_nnm(const char *path, GameMemory *memory)
 
   assert(memory->transient_store_size >= (mesh->vertex_count * sizeof(Vertex)));
   Vertex *vertices = (Vertex*)memory->transient_store;
-  real32 *real32_cursor = (real32*)cursor;
   for (uint16 i = 0; i < mesh->vertex_count; i++) {
-    vertices[i].position.x = real32_cursor[i * 6];
-    vertices[i].position.y = real32_cursor[i * 6 + 1];
-    vertices[i].position.z = real32_cursor[i * 6 + 2];
-    vertices[i].normal.x = real32_cursor[i * 6 + 3];
-    vertices[i].normal.y = real32_cursor[i * 6 + 4];
-    vertices[i].normal.z = real32_cursor[i * 6 + 5];
+    real32 *real32_cursor = (real32*)cursor;
+    vertices[i].position.x = real32_cursor[0];
+    vertices[i].position.y = real32_cursor[1];
+    vertices[i].position.z = real32_cursor[2];
+    vertices[i].normal.x = real32_cursor[3];
+    vertices[i].normal.y = real32_cursor[4];
+    vertices[i].normal.z = real32_cursor[5];
     cursor += 6 * sizeof(real32);
+
+    uint8 group_count = (uint8)*cursor;
+    cursor++;
+
+    for (uint8 j = 0; j < group_count; j++) {
+      vertices[i].bone_ids[j] = (uint8)*cursor;
+      cursor++;
+      vertices[i].bone_weights[j] = *(real32*)cursor;
+      cursor += sizeof(real32);
+    }
   }
   
   glGenBuffers(1, &mesh->vbo);

@@ -3,7 +3,7 @@
 layout (location = 0) in vec3 in_pos;
 layout (location = 1) in vec3 in_norm;
 layout (location = 2) in vec2 in_texcoords;
-layout (location = 3) in ivec4 bone_ids;
+layout (location = 3) in uvec4 bone_ids;
 layout (location = 4) in vec4 bone_weights;
 
 layout (location = 0) out vec3 out_pos;
