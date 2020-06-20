@@ -274,11 +274,9 @@ void load_model_nnm(const char *path, GameMemory *memory)
 
   GameState *state = game_state_pointer(memory);
   Mesh *mesh = &state->meshes[state->mesh_count++];
-  char *cursor = buffer;
+  const char *cursor = buffer;
 
-  uint8 mesh_name_len = (uint8)*cursor;
-  cursor++;
-
+  uint8 mesh_name_len = (uint8)*cursor++;
   char mesh_name[UCHAR_MAX];
   strncpy_s(mesh_name, sizeof(mesh_name), cursor, mesh_name_len);
   cursor += mesh_name_len;
@@ -298,12 +296,10 @@ void load_model_nnm(const char *path, GameMemory *memory)
     vertices[i].normal.z = real32_cursor[5];
     cursor += 6 * sizeof(real32);
 
-    uint8 group_count = (uint8)*cursor;
-    cursor++;
+    uint8 group_count = (uint8)*cursor++;
 
     for (uint8 j = 0; j < group_count; j++) {
-      vertices[i].bone_ids[j] = (uint8)*cursor;
-      cursor++;
+      vertices[i].bone_ids[j] = (uint8)*cursor++;
       vertices[i].bone_weights[j] = *(real32*)cursor;
       cursor += sizeof(real32);
     }
@@ -313,7 +309,7 @@ void load_model_nnm(const char *path, GameMemory *memory)
   glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
   glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertices, GL_STATIC_DRAW);
 
-  mesh->index_count = (uint8)cursor[0] + ((uint8)cursor[1] << 8);
+  mesh->index_count = *(uint16*)cursor;
   cursor += sizeof(uint16);
 
   assert(memory->transient_store_size >= (mesh->index_count * sizeof(uint32)));
@@ -324,11 +320,12 @@ void load_model_nnm(const char *path, GameMemory *memory)
     (uint32*)cursor,
     mesh->index_count * sizeof(uint32)
   );
+  cursor += mesh->index_count * sizeof(uint32);
 
   glGenVertexArrays(1, &mesh->vao);
   glBindVertexArray(mesh->vao);
 
-  // Remember, the target GL_ELEMENT_ARRAY_BUFFER sets its state on the VAO, so make sure its bound first!
+  // Remember, the target GL_ELEMENT_ARRAY_BUFFER modifies the VAO, so make sure it's bound first!
   glGenBuffers(1, &mesh->ebo);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ebo);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->index_count * sizeof(uint32), indices, GL_STATIC_DRAW);
@@ -349,6 +346,58 @@ void load_model_nnm(const char *path, GameMemory *memory)
   glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(real32) + 4 * sizeof(uint32)));
 
   glBindVertexArray(0);
+
+  mesh->bone_count = *(uint16*)cursor;
+  cursor += sizeof(uint16);
+
+  assert(sizeof(mesh->bones) >= (mesh->bone_count * sizeof(Bone)));
+
+  for (uint16 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
+    Bone *bone = &mesh->bones[bone_index];
+    uint8 bone_name_length = (uint8)*cursor++;
+    strncpy_s(bone->name, sizeof(bone->name), cursor, bone_name_length);
+    cursor += bone_name_length;
+
+    bone->offset = glm::make_mat4((real32*)cursor);
+    cursor += 16 * sizeof(real32);
+
+    uint8 parent_name_length = (uint8)*cursor++;
+    strncpy_s(bone->parent_name, sizeof(bone->parent_name), cursor, parent_name_length);
+    cursor += parent_name_length;
+  }
+
+  for (uint16 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
+    Bone *bone = &mesh->bones[bone_index];
+    if (!bone->parent_name[0])
+      continue;
+
+    for (uint16 parent_index = 0; parent_index < bone_index; parent_index++) {
+      if (strncmp(bone->parent_name, mesh->bones[parent_index].name, sizeof(bone->parent_name)) == 0) {
+        Bone *parent = &mesh->bones[parent_index];
+        bone->parent = parent;
+        parent->children[parent->child_count++] = bone;
+        break;
+      }
+    }
+  }
+
+    // uint8 parent_name_length = (uint8)*cursor++;
+    // if (parent_name_length > 0) {
+    //   char parent_name[UCHAR_MAX];
+    //   strncpy_s(parent_name, sizeof(parent_name), cursor, parent_name_length);
+    //   cursor += parent_name_length;
+    //   for (uint16 parent_index = 0; parent_index < (mesh->bone_count - 1); parent_index++) {
+    //     if (strncmp(parent_name, mesh->bones[parent_index].name, sizeof(mesh->bones[parent_index].name))) {
+    //       bone->parent = &mesh->bones[parent_index];
+    //       break;
+    //     }
+    //   }
+    // }
+
+    // uint8 children_count = (uint8)*cursor++;
+    // for (uint8 child_index = 0; child_index < children_count; child_index++) {
+
+    // }
 }
 
 void load_shader(const char *vs_path, const char *fs_path, GameState *state)

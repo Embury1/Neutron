@@ -1,9 +1,5 @@
 @echo off
 
-for %%G in ("n:\assets\*.nnm") do (
-  mklink "n:\src\%%~nxG" "%%~G" 2> NUL
-)
-
 if not exist .\build mkdir .\build
 pushd .\build
 

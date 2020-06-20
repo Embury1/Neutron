@@ -1,5 +1,6 @@
 import bmesh
 import bpy
+from itertools import chain
 from math import radians
 from mathutils import Matrix
 import os
@@ -20,10 +21,11 @@ with open(model_file, 'wb') as file:
         if obj.type != 'MESH':
             continue
 
-        mesh_name = obj.name
-        file.write(struct.pack('<B', len(mesh_name)))
-        file.write(mesh_name.encode('utf-8'))
-        log.append('Starting export of mesh "{}"'.format(mesh_name))
+        mesh_name = obj.name.encode('utf-8')
+        mesh_name_len = len(mesh_name)
+        file.write(struct.pack('<B', mesh_name_len))
+        file.write(mesh_name)
+        log.append('{} {}'.format(mesh_name_len, mesh_name))
 
         mesh = bmesh.new()
         mesh.from_mesh(obj.data)
@@ -70,6 +72,36 @@ with open(model_file, 'wb') as file:
 
         if obj.parent and obj.parent.type == 'ARMATURE':
             armature = obj.parent
+            bones = armature.data.bones
+
+            bone_count = len(bones)
+            file.write(struct.pack('<H', bone_count))
+            log.append('{} bones'.format(bone_count))
+
+            for bone in bones:
+                bone_name = bone.name.encode('utf-8')
+                bone_name_len = len(bone_name)
+                file.write(struct.pack('<B', bone_name_len))
+                file.write(bone_name)
+                log.append('b {} {}'.format(bone_name_len, bone_name))
+
+                bone_matrix = list(chain.from_iterable(bone.matrix_local))
+                file.write(struct.pack('<ffffffffffffffff', *bone_matrix))
+                log.append(bone_matrix)
+
+                if bone.parent:
+                    parent_name = bone.parent.name.encode('utf-8')
+                    parent_name_len = len(parent_name)
+                    file.write(struct.pack('<B', parent_name_len))
+                    file.write(parent_name)
+                    log.append('p {} {}'.format(parent_name_len, parent_name))
+                else:
+                    file.write(struct.pack('<B', 0))
+                    log.append('p 0')
+
+        else:
+            file.write(struct.pack('<H', 0))
+            log.append('0 bones')
 
 with open(log_file, 'w') as file:
     file.writelines([str(line) + '\n' for line in log])

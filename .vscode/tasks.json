@@ -20,11 +20,7 @@
     {
       "type": "shell",
       "label": "Export assets",
-      "command": "call ./scripts/export_assets.bat",
-      "args": [
-        "n:/assets/rig.blend",
-        "./scripts/blender_export.py"
-      ]
+      "command": "call ./scripts/export_assets.bat"
     }
   ]
 }

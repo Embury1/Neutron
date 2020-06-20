@@ -1,3 +1,7 @@
 @echo off
 
-blender %1 --background --python %2
+blender n:/assets/rig.blend --background --python ./scripts/blender_export.py
+
+for %%G in ("n:\assets\*.nnm") do (
+  mklink "n:\src\%%~nxG" "%%~G" 2> NUL
+)

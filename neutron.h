@@ -70,6 +70,10 @@ struct PlatformState {
 struct Bone {
   char name[32];
   glm::mat4 offset;
+  Bone *parent;
+  char parent_name[32];
+  Bone *children[16];
+  uint8 child_count;
 };
 
 struct Vertex {
