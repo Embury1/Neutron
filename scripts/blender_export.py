@@ -72,7 +72,8 @@ with open(model_file, 'wb') as file:
 
         if obj.parent and obj.parent.type == 'ARMATURE':
             armature = obj.parent
-            bones = armature.data.bones
+            bones = [b for vg in obj.vertex_groups for b in armature.data.bones if b.name == vg.name]
+            bones.extend([b for b in armature.data.bones if b not in bones])
 
             bone_count = len(bones)
             file.write(struct.pack('<H', bone_count))
