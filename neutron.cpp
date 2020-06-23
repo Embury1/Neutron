@@ -592,6 +592,7 @@ int32 main(int32 argc, int8 **argv)
   while (!glfwWindowShouldClose(window)) {
     glClearColor(0.75f, 1.0f, 0.01f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glUseProgram(shader->id);
     real64 time = glfwGetTime();
 
     const float radius(10.0f);
@@ -600,9 +601,15 @@ int32 main(int32 argc, int8 **argv)
     camera.view = glm::lookAt(camera.position, camera.target, camera.up);
     glUniformMatrix4fv(glGetUniformLocation(shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
 
-    glUseProgram(shader->id);
     for (uint32 i = 0; i < game_state->mesh_count; i++) {
       Mesh *mesh = &game_state->meshes[i];
+
+      for (uint8 j = 0; j < mesh->bone_count; j++) {
+        char uniform_name[40] = {};
+        sprintf_s(uniform_name, sizeof(uniform_name), "bones[%d]", j);
+        glUniformMatrix4fv(glGetUniformLocation(shader->id, uniform_name), 1, GL_FALSE, glm::value_ptr(mesh->bones[j].offset));
+      }
+
       glBindVertexArray(mesh->vao);
       glDrawElements(GL_TRIANGLES, mesh->index_count, GL_UNSIGNED_INT, 0);
       glBindVertexArray(0);

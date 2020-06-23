@@ -12,10 +12,16 @@ layout (location = 1) out vec3 out_norm;
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 proj;
+uniform mat4 bones[64];
 
 void main()
 {
-  gl_Position = proj * view * model * vec4(in_pos, 1.0);
+  mat4 bone_transform = mat4(1.0f);
+  for (int i = 0; i < 64; i++) {
+    bone_transform += bones[bone_ids[i]] * bone_weights[i];
+  }
+
+  gl_Position = proj * view * model * bone_transform * vec4(in_pos, 1.0);
   out_pos = vec3(model * vec4(in_pos, 1.0));
   out_norm = mat3(transpose(inverse(model))) * in_norm;
 }
