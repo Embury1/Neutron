@@ -400,10 +400,10 @@ void load_model_nnm(const char *path, GameMemory *memory)
     // }
 }
 
-void load_shader(const char *vs_path, const char *fs_path, GameState *state)
+internal uint32 read_shader_code_from_file(char *path, uint16 shader_type)
 {
-  HANDLE vs_file = CreateFileA(
-    vs_path,
+  HANDLE file = CreateFileA(
+    path,
     GENERIC_READ,
     FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
     null,
@@ -412,98 +412,70 @@ void load_shader(const char *vs_path, const char *fs_path, GameState *state)
     null
   );
 
-  if (vs_file == INVALID_HANDLE_VALUE) {
+  if (file == INVALID_HANDLE_VALUE) {
     DWORD error = GetLastError();
     if (error == ERROR_PATH_NOT_FOUND || error == ERROR_FILE_NOT_FOUND)
-      printf("%s was not found\n", vs_path);
-    return;
-  }
-
-  HANDLE fs_file = CreateFileA(
-    fs_path,
-    GENERIC_READ,
-    FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
-    null,
-    OPEN_EXISTING,
-    FILE_ATTRIBUTE_READONLY,
-    null
-  );
-
-  if (fs_file == INVALID_HANDLE_VALUE) {
-    DWORD error = GetLastError();
-    if (error == ERROR_PATH_NOT_FOUND || error == ERROR_FILE_NOT_FOUND)
-      printf("%s was not found\n", vs_path);
-    return;
+      fprintf(stderr, "%s was not found\n", path);
+    return 0;
   }
 
   DWORD bytes_read;
-  char vs_buf[kilobytes(5)] = {};
-  char fs_buf[kilobytes(5)] = {};
-
-  if (!ReadFile(
-    vs_file,
-    vs_buf,
-    sizeof(vs_buf),
-    &bytes_read,
-    null
-  ) || !bytes_read) {
-    printf("%s could not be read\n", vs_path);
-    return;
-  }
-
-  if (!ReadFile(
-    fs_file,
-    fs_buf,
-    sizeof(fs_buf),
-    &bytes_read,
-    null
-  ) || !bytes_read) {
-    printf("%s could not be read\n", fs_path);
-    return;
-  }
-
+  char buffer[kilobytes(5)] = {};
   char log[512];
   int32 success;
 
-  uint32 vs_id = glCreateShader(GL_VERTEX_SHADER);
-  const char *vs_code = vs_buf;
-  glShaderSource(vs_id, 1, &vs_code, null);
-  glCompileShader(vs_id);
-  glGetShaderiv(vs_id, GL_COMPILE_STATUS, &success);
-  if (!success) {
-    glGetShaderInfoLog(vs_id, sizeof(log), null, log);
-    printf("Vertex shader compile error: %s\n", log);
-    return;
+  if (!ReadFile(
+    file,
+    buffer,
+    sizeof(buffer),
+    &bytes_read,
+    null
+  ) || !bytes_read) {
+    fprintf(stderr, "%s could not be read\n", path);
+    return 0;
   }
 
-  uint32 fs_id = glCreateShader(GL_FRAGMENT_SHADER);
-  const char *fs_code = fs_buf;
-  glShaderSource(fs_id, 1, &fs_code, null);
-  glCompileShader(fs_id);
-  glGetShaderiv(fs_id, GL_COMPILE_STATUS, &success);
+  uint32 id = glCreateShader(shader_type);
+  const char *code = buffer;
+  glShaderSource(id, 1, &code, null);
+  glCompileShader(id);
+  glGetShaderiv(id, GL_COMPILE_STATUS, &success);
   if (!success) {
-    glGetShaderInfoLog(fs_id, sizeof(log), null, log);
-    printf("Fragment shader compile error: %s\n", log);
-    return;
+    glGetShaderInfoLog(id, sizeof(log), null, log);
+    fprintf(stderr, "Shader compile error: %s\n", log);
+    return 0;
   }
 
-  Shader *shader = &state->shaders[state->shader_count];
+  return id;
+}
+
+void load_shader(Shader *shader)
+{
+  assert(shader->vs_path);
+  assert(shader->fs_path);
+
+  uint32 vs_id = read_shader_code_from_file(shader->vs_path, GL_VERTEX_SHADER);
+  uint32 gs_id = shader->gs_path ? read_shader_code_from_file(shader->gs_path, GL_GEOMETRY_SHADER) : 0;
+  uint32 fs_id = read_shader_code_from_file(shader->fs_path, GL_FRAGMENT_SHADER);
+
   shader->id = glCreateProgram();
-  strcpy_s(shader->vs_path, sizeof(shader->vs_path), vs_path);
-  strcpy_s(shader->fs_path, sizeof(shader->fs_path), fs_path);
   glAttachShader(shader->id, vs_id);
+  if (gs_id)
+    glAttachShader(shader->id, gs_id);
   glAttachShader(shader->id, fs_id);
   glLinkProgram(shader->id);
+  int32 success;
   glGetProgramiv(shader->id, GL_LINK_STATUS, &success);
   if (!success) {
-    glGetShaderInfoLog(shader->id, sizeof(log), null, log);
-    printf("Shader linking error: %s\n", log);
+    char log[512];
+    glGetProgramInfoLog(shader->id, sizeof(log), null, log);
+    fprintf(stderr, "Shader linking error: %s\n", log);
     return;
   }
 
-  state->shader_count++;
-
   glDeleteShader(vs_id);
+  if (gs_id)
+    glDeleteShader(gs_id);
   glDeleteShader(fs_id);
 }
 
@@ -563,20 +535,19 @@ int32 main(int32 argc, int8 **argv)
   luaL_openlibs(platform_state->L);
   luaL_loadfile(platform_state->L, "test.lua");
 
-  load_shader("test.vert", "test.frag", game_state);
-  // load_model("test.dae", game_state);
-  // load_model("cube.dae", game_state);
-  // load_model("basemodel.dae", game_state);
-  // load_model("rig.dae", &memory);
-  load_model_nnm("rig.nnm", &memory);
+  Shader *shader = &game_state->shaders[game_state->shader_count++];
+  nnstrcpy(shader->vs_path, "test.vert");
+  nnstrcpy(shader->gs_path, "test.geom");
+  nnstrcpy(shader->fs_path, "test.frag");
+  load_shader(shader);
+  load_model_nnm("pillar.nnm", &memory);
 
   Camera camera = {
-    { 5.0f, 7.0f, 5.0f },
-    { 0.0f, 2.0f, 0.0f },
+    { 1.0f, 1.0f, 1.0f },
+    { 0.0f, 0.0f, 0.0f },
     { 0.0f, 1.0f, 0.0f }
   };
 
-  Shader *shader = &game_state->shaders[0];
   glUseProgram(shader->id);
 
   camera.view = glm::lookAt(camera.position, camera.target, camera.up);
@@ -586,7 +557,7 @@ int32 main(int32 argc, int8 **argv)
   glUniformMatrix4fv(glGetUniformLocation(shader->id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
 
   glm::mat4 model(1.0f);
-  model = glm::translate(model, glm::vec3(1.0f, 1.0f, 0.0f));
+  // model = glm::translate(model, glm::vec3(1.0f, 1.0f, 0.0f));
   glUniformMatrix4fv(glGetUniformLocation(shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
 
   while (!glfwWindowShouldClose(window)) {
@@ -595,7 +566,7 @@ int32 main(int32 argc, int8 **argv)
     glUseProgram(shader->id);
     real64 time = glfwGetTime();
 
-    const float radius(10.0f);
+    const real32 radius(10.0f);
     camera.position.x = glm::sin(time) * radius;
     camera.position.z = glm::cos(time) * radius;
     camera.view = glm::lookAt(camera.position, camera.target, camera.up);

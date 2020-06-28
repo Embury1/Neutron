@@ -105,8 +105,9 @@ struct Mesh {
 
 struct Shader {
   uint32 id;
-  char vs_path[MAX_PATH];
-  char fs_path[MAX_PATH];
+  char vs_path[32];
+  char gs_path[32];
+  char fs_path[32];
 };
 
 struct GameState {

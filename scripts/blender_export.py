@@ -87,7 +87,7 @@ with open(model_file, 'wb') as file:
                 file.write(bone_name)
                 log.append('b {} {}'.format(bone_name_len, bone_name))
 
-                bone_matrix = list(chain.from_iterable(bone.matrix_local))
+                bone_matrix = list(chain.from_iterable(bone.matrix.to_4x4()))
                 file.write(struct.pack('<ffffffffffffffff', *bone_matrix))
                 log.append(bone_matrix)
 
