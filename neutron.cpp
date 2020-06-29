@@ -455,7 +455,7 @@ void load_shader(Shader *shader)
   assert(shader->fs_path);
 
   uint32 vs_id = read_shader_code_from_file(shader->vs_path, GL_VERTEX_SHADER);
-  uint32 gs_id = shader->gs_path ? read_shader_code_from_file(shader->gs_path, GL_GEOMETRY_SHADER) : 0;
+  uint32 gs_id = *shader->gs_path != '\0' ? read_shader_code_from_file(shader->gs_path, GL_GEOMETRY_SHADER) : 0;
   uint32 fs_id = read_shader_code_from_file(shader->fs_path, GL_FRAGMENT_SHADER);
 
   shader->id = glCreateProgram();
@@ -535,11 +535,17 @@ int32 main(int32 argc, int8 **argv)
   luaL_openlibs(platform_state->L);
   luaL_loadfile(platform_state->L, "test.lua");
 
-  Shader *shader = &game_state->shaders[game_state->shader_count++];
-  nnstrcpy(shader->vs_path, "test.vert");
-  nnstrcpy(shader->gs_path, "test.geom");
-  nnstrcpy(shader->fs_path, "test.frag");
-  load_shader(shader);
+  Shader *phong_shader = &game_state->shaders[game_state->shader_count++];
+  nnstrcpy(phong_shader->vs_path, "shaders/phong.vert");
+  nnstrcpy(phong_shader->fs_path, "shaders/phong.frag");
+  load_shader(phong_shader);
+
+  Shader *vert_dbg_shader = &game_state->shaders[game_state->shader_count++];
+  nnstrcpy(vert_dbg_shader->vs_path, "shaders/vert_dbg.vert");
+  nnstrcpy(vert_dbg_shader->gs_path, "shaders/vert_dbg.geom");
+  nnstrcpy(vert_dbg_shader->fs_path, "shaders/vert_dbg.frag");
+  load_shader(vert_dbg_shader);
+
   load_model_nnm("pillar.nnm", &memory);
 
   Camera camera = {
@@ -548,41 +554,59 @@ int32 main(int32 argc, int8 **argv)
     { 0.0f, 1.0f, 0.0f }
   };
 
-  glUseProgram(shader->id);
+  glUseProgram(phong_shader->id);
 
   camera.view = glm::lookAt(camera.position, camera.target, camera.up);
-  glUniformMatrix4fv(glGetUniformLocation(shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+  glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
 
   glm::mat4 proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.01f, 1000.0f);
-  glUniformMatrix4fv(glGetUniformLocation(shader->id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
+  glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
 
   glm::mat4 model(1.0f);
   // model = glm::translate(model, glm::vec3(1.0f, 1.0f, 0.0f));
-  glUniformMatrix4fv(glGetUniformLocation(shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
+  glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
+
+  bool32 debug_vertices = true;
+  if (debug_vertices) {
+    glUseProgram(vert_dbg_shader->id);
+    glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+    glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
+  }
 
   while (!glfwWindowShouldClose(window)) {
-    glClearColor(0.75f, 1.0f, 0.01f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glUseProgram(shader->id);
+    glUseProgram(phong_shader->id);
     real64 time = glfwGetTime();
 
     const real32 radius(10.0f);
     camera.position.x = glm::sin(time) * radius;
     camera.position.z = glm::cos(time) * radius;
     camera.view = glm::lookAt(camera.position, camera.target, camera.up);
-    glUniformMatrix4fv(glGetUniformLocation(shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+    glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+
+    if (debug_vertices) {
+      glUseProgram(vert_dbg_shader->id);
+      glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+    }
 
     for (uint32 i = 0; i < game_state->mesh_count; i++) {
+      glUseProgram(phong_shader->id);
       Mesh *mesh = &game_state->meshes[i];
 
       for (uint8 j = 0; j < mesh->bone_count; j++) {
         char uniform_name[40] = {};
         sprintf_s(uniform_name, sizeof(uniform_name), "bones[%d]", j);
-        glUniformMatrix4fv(glGetUniformLocation(shader->id, uniform_name), 1, GL_FALSE, glm::value_ptr(mesh->bones[j].offset));
+        glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, uniform_name), 1, GL_FALSE, glm::value_ptr(mesh->bones[j].offset));
       }
 
       glBindVertexArray(mesh->vao);
       glDrawElements(GL_TRIANGLES, mesh->index_count, GL_UNSIGNED_INT, 0);
+      if (debug_vertices) {
+        glUseProgram(vert_dbg_shader->id);
+        glDrawElements(GL_POINTS, mesh->index_count, GL_UNSIGNED_INT, 0);
+      }
       glBindVertexArray(0);
     }
 
