@@ -361,25 +361,25 @@ void load_model_nnm(const char *path, GameMemory *memory)
     bone->offset = glm::make_mat4((real32*)cursor);
     cursor += 16 * sizeof(real32);
 
-    uint8 parent_name_length = (uint8)*cursor++;
-    strncpy_s(bone->parent_name, sizeof(bone->parent_name), cursor, parent_name_length);
-    cursor += parent_name_length;
+    // uint8 parent_name_length = (uint8)*cursor++;
+    // strncpy_s(bone->parent_name, sizeof(bone->parent_name), cursor, parent_name_length);
+    // cursor += parent_name_length;
   }
 
-  for (uint16 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
-    Bone *bone = &mesh->bones[bone_index];
-    if (!bone->parent_name[0])
-      continue;
+  // for (uint16 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
+  //   Bone *bone = &mesh->bones[bone_index];
+  //   if (!bone->parent_name[0])
+  //     continue;
 
-    for (uint16 parent_index = 0; parent_index < bone_index; parent_index++) {
-      if (strncmp(bone->parent_name, mesh->bones[parent_index].name, sizeof(bone->parent_name)) == 0) {
-        Bone *parent = &mesh->bones[parent_index];
-        bone->parent = parent;
-        parent->children[parent->child_count++] = bone;
-        break;
-      }
-    }
-  }
+  //   for (uint16 parent_index = 0; parent_index < bone_index; parent_index++) {
+  //     if (strncmp(bone->parent_name, mesh->bones[parent_index].name, sizeof(bone->parent_name)) == 0) {
+  //       Bone *parent = &mesh->bones[parent_index];
+  //       bone->parent = parent;
+  //       parent->children[parent->child_count++] = bone;
+  //       break;
+  //     }
+  //   }
+  // }
 
     // uint8 parent_name_length = (uint8)*cursor++;
     // if (parent_name_length > 0) {
@@ -546,7 +546,7 @@ int32 main(int32 argc, int8 **argv)
   nnstrcpy(vert_dbg_shader->fs_path, "shaders/vert_dbg.frag");
   load_shader(vert_dbg_shader);
 
-  load_model_nnm("pillar.nnm", &memory);
+  load_model_nnm("rig.nnm", &memory);
 
   Camera camera = {
     { 1.0f, 1.0f, 1.0f },
@@ -566,7 +566,7 @@ int32 main(int32 argc, int8 **argv)
   // model = glm::translate(model, glm::vec3(1.0f, 1.0f, 0.0f));
   glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
 
-  bool32 debug_vertices = true;
+  bool32 debug_vertices = false;
   if (debug_vertices) {
     glUseProgram(vert_dbg_shader->id);
     glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
@@ -575,7 +575,7 @@ int32 main(int32 argc, int8 **argv)
   }
 
   while (!glfwWindowShouldClose(window)) {
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(1.0f, 0.7f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram(phong_shader->id);
     real64 time = glfwGetTime();
@@ -599,8 +599,12 @@ int32 main(int32 argc, int8 **argv)
         char uniform_name[40] = {};
         sprintf_s(uniform_name, sizeof(uniform_name), "bones[%d]", j);
         glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, uniform_name), 1, GL_FALSE, glm::value_ptr(mesh->bones[j].offset));
+        if (debug_vertices) {
+          glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, uniform_name), 1, GL_FALSE, glm::value_ptr(mesh->bones[j].offset));
+        }
       }
 
+      glUseProgram(phong_shader->id);
       glBindVertexArray(mesh->vao);
       glDrawElements(GL_TRIANGLES, mesh->index_count, GL_UNSIGNED_INT, 0);
       if (debug_vertices) {
