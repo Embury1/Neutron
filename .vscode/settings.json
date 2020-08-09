@@ -50,7 +50,8 @@
     "xlocmon": "cpp",
     "xloctime": "cpp",
     "array": "cpp",
-    "vector": "cpp"
-  },
-  "python.pythonPath": "C:\\Users\\Embury\\AppData\\Local\\Programs\\Python\\Python37\\python.exe;"
+    "vector": "cpp",
+    "iterator": "cpp",
+    "algorithm": "cpp"
+  }
 }

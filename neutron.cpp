@@ -2,7 +2,8 @@
 
 #include "glad.c"
 
-void GLAPIENTRY dbg_msg(
+void GLAPIENTRY
+dbg_msg(
   GLenum source,
   GLenum type,
   GLuint id,
@@ -14,37 +15,20 @@ void GLAPIENTRY dbg_msg(
   fprintf(stderr, "%s0x%x 0x%x %s\n", type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR ** " : "", type, severity, message);
 }
 
-internal PlatformState* platform_state_pointer(const GameMemory *memory)
+internal PlatformState*
+platform_state_pointer(const GameMemory *memory)
 {
   return (PlatformState*)((uint8*)memory->persistent_store);
 }
 
-internal GameState* game_state_pointer(const GameMemory *memory)
+internal GameState*
+game_state_pointer(const GameMemory *memory)
 {
   return (GameState*)((uint8*)memory->persistent_store + sizeof(PlatformState));
 }
 
-internal void aimat4_to_glm(const aiMatrix4x4 *ai_mat, glm::mat4 *glm_mat)
-{
-  (*glm_mat)[0][0] = (GLfloat)ai_mat->a1;
-  (*glm_mat)[0][1] = (GLfloat)ai_mat->b1;
-  (*glm_mat)[0][2] = (GLfloat)ai_mat->c1;
-  (*glm_mat)[0][3] = (GLfloat)ai_mat->d1;
-  (*glm_mat)[1][0] = (GLfloat)ai_mat->a2;
-  (*glm_mat)[1][1] = (GLfloat)ai_mat->b2;
-  (*glm_mat)[1][2] = (GLfloat)ai_mat->c2;
-  (*glm_mat)[1][3] = (GLfloat)ai_mat->d2;
-  (*glm_mat)[2][0] = (GLfloat)ai_mat->a3;
-  (*glm_mat)[2][1] = (GLfloat)ai_mat->b3;
-  (*glm_mat)[2][2] = (GLfloat)ai_mat->c3;
-  (*glm_mat)[2][3] = (GLfloat)ai_mat->d3;
-  (*glm_mat)[3][0] = (GLfloat)ai_mat->a4;
-  (*glm_mat)[3][1] = (GLfloat)ai_mat->b4;
-  (*glm_mat)[3][2] = (GLfloat)ai_mat->c4;
-  (*glm_mat)[3][3] = (GLfloat)ai_mat->d4;
-}
-
-// uint32 texture_from_file(const char *path, bool gamma)
+// uint32
+// texture_from_file(const char *path, bool gamma)
 // {
 //   uint32 textureID;
 //   glGenTextures(1, &textureID);
@@ -78,7 +62,8 @@ internal void aimat4_to_glm(const aiMatrix4x4 *ai_mat, glm::mat4 *glm_mat)
 //   return textureID;
 // }
 
-// internal void load_material_textures(GameState *state, aiMaterial *mat, aiTextureType type, char *type_name)
+// internal void
+// load_material_textures(GameState *state, aiMaterial *mat, aiTextureType type, char *type_name)
 // {
 //   for (uint32 i = 0; i < mat->GetTexturennlen(type); i++) {
 //     aiString str;
@@ -92,154 +77,18 @@ internal void aimat4_to_glm(const aiMatrix4x4 *ai_mat, glm::mat4 *glm_mat)
 //   }
 // }
 
-internal void process_ainode(GameMemory *memory, const aiNode *ainode, const aiScene *aiscene)
+internal void
+calc_bone_transform(Bone *bone, const glm::mat4 *parent_transform)
 {
-  GameState *state = game_state_pointer(memory);
-  assert((nnlen(state->meshes) - state->mesh_count) >= ainode->mNumMeshes);
-  for (uint32 i = 0; i < ainode->mNumMeshes; i++) {
-    aiMesh *aimesh = aiscene->mMeshes[ainode->mMeshes[i]];
-    assert(aimesh->mPrimitiveTypes == aiPrimitiveType_TRIANGLE);
-    Mesh *mesh = &state->meshes[state->mesh_count];
-
-    // Mesh properties
-    const char *mesh_name = ainode->mName.C_Str();
-    nnstrcpy(mesh->name, mesh_name);
-
-    // Vertices
-    assert(memory->transient_store_size >= (aimesh->mNumVertices * sizeof(Vertex)));
-    Vertex *vertices = (Vertex*)memory->transient_store;
-    for (uint32 j = 0; j < aimesh->mNumVertices; j++) {
-      vertices[j].position.x = aimesh->mVertices[j].x;
-      vertices[j].position.y = aimesh->mVertices[j].y;
-      vertices[j].position.z = aimesh->mVertices[j].z;
-
-      if (aimesh->mNormals) {
-        vertices[j].normal.x = aimesh->mNormals[j].x;
-        vertices[j].normal.y = aimesh->mNormals[j].y;
-        vertices[j].normal.z = aimesh->mNormals[j].z;
-      }
-
-      if (aimesh->mTextureCoords[0]) {
-        vertices[j].tex_coords.x = aimesh->mTextureCoords[0][j].x;
-        vertices[j].tex_coords.y = aimesh->mTextureCoords[0][j].y;
-      }
-
-      mesh->vertex_count++;
-    }
-
-    // Bones
-    assert(nnlen(mesh->bones) >= (aimesh->mNumBones));
-    for (uint32 j = 0; j < aimesh->mNumBones; j++) {
-      aiBone *aibone = aimesh->mBones[j];
-
-      const char *bone_name = aibone->mName.C_Str();
-      uint8 bone_index = UCHAR_MAX;
-
-      for (uint32 k = 0; k < mesh->bone_count; k++) {
-        if (strncmp(mesh->bones[k].name, bone_name, sizeof(mesh->bones[k].name)) == 0) {
-          bone_index = k;
-          break;
-        }
-      }
-
-      if (bone_index == UCHAR_MAX) {
-        bone_index = mesh->bone_count;
-        Bone *bone = &mesh->bones[bone_index];
-        // strncpy_s(bone->name, sizeof(bone->name) - 1, bone_name, strnlen_s(bone_name, sizeof(bone->name) - 1));
-        nnstrcpy(bone->name, bone_name);
-        aimat4_to_glm(&aibone->mOffsetMatrix, &bone->offset);
-        mesh->bone_count++;
-      }
-
-      for (uint32 k = 0; k < aibone->mNumWeights; k++) {
-        aiVertexWeight *aiweight = &aibone->mWeights[k];
-        Vertex *vertex = &vertices[aiweight->mVertexId];
-        for (uint8 l = 0; l < WEIGHT_COUNT_LIMIT; l++) {
-          if (vertex->bone_weights[l] == 0.0) {
-            vertex->bone_ids[l] = bone_index;
-            vertex->bone_weights[l] = aiweight->mWeight;
-            break;
-          }
-        }
-      }
-    }
-
-    // Fill vertex buffer
-    glGenBuffers(1, &mesh->vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, mesh->vbo);
-    glBufferData(GL_ARRAY_BUFFER, mesh->vertex_count * sizeof(Vertex), vertices, GL_STATIC_DRAW);
-
-    // Indices
-    assert(memory->transient_store_size >= (aimesh->mNumFaces * 3 * sizeof(uint32)));
-    uint32 *indices = (uint32*)memory->transient_store;
-    for (uint32 j = 0; j < aimesh->mNumFaces; j++) {
-      aiFace *aiface = &aimesh->mFaces[j];
-      for (uint32 k = 0; k < aiface->mNumIndices; k++) {
-        indices[j * 3 + k] = aiface->mIndices[k];
-        mesh->index_count++;
-      }
-    }
-
-    state->mesh_count++;
-
-    glGenVertexArrays(1, &mesh->vao);
-    glBindVertexArray(mesh->vao);
-
-    // Remember, the target GL_ELEMENT_ARRAY_BUFFER sets its state on the VAO, so make sure its bound first!
-    glGenBuffers(1, &mesh->ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->index_count * sizeof(uint32), indices, GL_STATIC_DRAW);
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(real32)));
-
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6 * sizeof(real32)));
-
-    glEnableVertexAttribArray(3);
-    glVertexAttribIPointer(3, 4, GL_UNSIGNED_INT, sizeof(Vertex), (void*)(8 * sizeof(real32)));
-
-    glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(real32) + 4 * sizeof(uint32)));
-
-    glBindVertexArray(0);
-  }
-
-  for (uint32 i = 0; i < ainode->mNumChildren; i++) {
-    process_ainode(memory, ainode->mChildren[i], aiscene);
+  bone->bind_transform = *parent_transform * bone->armature_transform;
+  bone->inv_bind_transform = glm::inverse(bone->bind_transform);
+  for (uint32 child_index = 0; child_index < bone->child_count; child_index++) {
+    calc_bone_transform(bone->children[child_index], &bone->bind_transform);
   }
 }
 
-void load_model(const char *path, GameMemory *memory)
-{
-  aiPropertyStore *props = aiCreatePropertyStore();
-  aiSetImportPropertyInteger(props, AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT);
-  const aiScene *aiscene = aiImportFileExWithProperties(
-    path,
-    aiProcess_Triangulate
-    | aiProcess_FlipUVs
-    // | aiProcess_FixInfacingNormals
-    // | aiProcess_FlipWindingOrder
-    | aiProcess_GenSmoothNormals
-    | aiProcess_SortByPType
-    | aiProcess_JoinIdenticalVertices
-    | aiProcess_OptimizeMeshes
-    | aiProcess_OptimizeGraph,
-    null,
-    props);
-  if (!aiscene || aiscene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !aiscene->mRootNode) {
-    printf("Failed to load model %s: %s\n", path, aiGetErrorString());
-    return;
-  }
-
-  process_ainode(memory, aiscene->mRootNode, aiscene);
-  aiReleasePropertyStore(props);
-}
-
-void load_model_nnm(const char *path, GameMemory *memory)
+void
+load_model(const char *path, GameMemory *memory)
 {
   HANDLE file = CreateFileA(
     path,
@@ -280,6 +129,9 @@ void load_model_nnm(const char *path, GameMemory *memory)
   char mesh_name[UCHAR_MAX];
   strncpy_s(mesh_name, sizeof(mesh_name), cursor, mesh_name_len);
   cursor += mesh_name_len;
+
+  mesh->transform = glm::make_mat4((real32*)cursor);
+  cursor += 16 * sizeof(real32);
 
   mesh->vertex_count = (uint8)cursor[0] + ((uint8)cursor[1] << 8);
   cursor += sizeof(uint16);
@@ -344,63 +196,70 @@ void load_model_nnm(const char *path, GameMemory *memory)
 
   glEnableVertexAttribArray(4);
   glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(real32) + 4 * sizeof(uint32)));
-
   glBindVertexArray(0);
+
+  mesh->armature_transform = glm::make_mat4((real32*)cursor);
+  mesh->inverse_armature_transform = glm::inverse(mesh->armature_transform);
+  cursor += 16 * sizeof(real32);
 
   mesh->bone_count = *(uint16*)cursor;
   cursor += sizeof(uint16);
 
   assert(sizeof(mesh->bones) >= (mesh->bone_count * sizeof(Bone)));
 
-  for (uint16 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
+  for (uint32 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
     Bone *bone = &mesh->bones[bone_index];
     uint8 bone_name_length = (uint8)*cursor++;
     strncpy_s(bone->name, sizeof(bone->name), cursor, bone_name_length);
     cursor += bone_name_length;
 
-    bone->offset = glm::make_mat4((real32*)cursor);
+    bone->armature_transform = glm::make_mat4((real32*)cursor);
     cursor += 16 * sizeof(real32);
 
-    // uint8 parent_name_length = (uint8)*cursor++;
-    // strncpy_s(bone->parent_name, sizeof(bone->parent_name), cursor, parent_name_length);
-    // cursor += parent_name_length;
+    uint8 parent_name_length = (uint8)*cursor++;
+    strncpy_s(bone->parent_name, sizeof(bone->parent_name), cursor, parent_name_length);
+    cursor += parent_name_length;
   }
 
-  // for (uint16 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
-  //   Bone *bone = &mesh->bones[bone_index];
-  //   if (!bone->parent_name[0])
-  //     continue;
+  for (uint16 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
+    Bone *bone = &mesh->bones[bone_index];
+    if (!bone->parent_name[0])
+      continue;
 
-  //   for (uint16 parent_index = 0; parent_index < bone_index; parent_index++) {
-  //     if (strncmp(bone->parent_name, mesh->bones[parent_index].name, sizeof(bone->parent_name)) == 0) {
-  //       Bone *parent = &mesh->bones[parent_index];
-  //       bone->parent = parent;
-  //       parent->children[parent->child_count++] = bone;
-  //       break;
-  //     }
-  //   }
-  // }
+    for (uint16 parent_index = 0; parent_index < bone_index; parent_index++) {
+      if (strncmp(bone->parent_name, mesh->bones[parent_index].name, sizeof(bone->parent_name)) == 0) {
+        Bone *parent = &mesh->bones[parent_index];
+        bone->parent = parent;
+        parent->children[parent->child_count++] = bone;
+        break;
+      }
+    }
+  }
 
-    // uint8 parent_name_length = (uint8)*cursor++;
-    // if (parent_name_length > 0) {
-    //   char parent_name[UCHAR_MAX];
-    //   strncpy_s(parent_name, sizeof(parent_name), cursor, parent_name_length);
-    //   cursor += parent_name_length;
-    //   for (uint16 parent_index = 0; parent_index < (mesh->bone_count - 1); parent_index++) {
-    //     if (strncmp(parent_name, mesh->bones[parent_index].name, sizeof(mesh->bones[parent_index].name))) {
-    //       bone->parent = &mesh->bones[parent_index];
-    //       break;
-    //     }
-    //   }
-    // }
+  assert(memory->transient_store_size >= (mesh->bone_count * sizeof(glm::vec3)));
+  glm::vec3 *bone_vertices = (glm::vec3*)memory->transient_store;
+  for (uint32 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
+    Bone *bone = &mesh->bones[bone_index];
+    glm::mat4 transposed = glm::transpose(bone->armature_transform);
+    bone_vertices[bone_index] = glm::vec3(transposed[3]);
+    if (!bone->parent) {
+      glm::mat4 root_transform(1.0f);
+      calc_bone_transform(bone, &root_transform);
+    }
+  }
 
-    // uint8 children_count = (uint8)*cursor++;
-    // for (uint8 child_index = 0; child_index < children_count; child_index++) {
-
-    // }
+  glGenBuffers(1, &mesh->bone_vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, mesh->bone_vbo);
+  glBufferData(GL_ARRAY_BUFFER, mesh->bone_count * sizeof(glm::vec3), bone_vertices, GL_STATIC_DRAW);
+  glGenVertexArrays(1, &mesh->bone_vao);
+  glBindVertexArray(mesh->bone_vao);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+  glBindVertexArray(0);
 }
 
-internal uint32 read_shader_code_from_file(char *path, uint16 shader_type)
+internal uint32
+read_shader_code_from_file(char *path, uint16 shader_type)
 {
   HANDLE file = CreateFileA(
     path,
@@ -449,7 +308,8 @@ internal uint32 read_shader_code_from_file(char *path, uint16 shader_type)
   return id;
 }
 
-void load_shader(Shader *shader)
+void
+load_shader(Shader *shader)
 {
   assert(shader->vs_path);
   assert(shader->fs_path);
@@ -479,7 +339,8 @@ void load_shader(Shader *shader)
   glDeleteShader(fs_id);
 }
 
-int32 main(int32 argc, int8 **argv)
+int32
+main(int32 argc, int8 *argv[])
 {
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -541,12 +402,18 @@ int32 main(int32 argc, int8 **argv)
   load_shader(phong_shader);
 
   Shader *vert_dbg_shader = &game_state->shaders[game_state->shader_count++];
-  nnstrcpy(vert_dbg_shader->vs_path, "shaders/vert_dbg.vert");
-  nnstrcpy(vert_dbg_shader->gs_path, "shaders/vert_dbg.geom");
-  nnstrcpy(vert_dbg_shader->fs_path, "shaders/vert_dbg.frag");
+  nnstrcpy(vert_dbg_shader->vs_path, "shaders/dbg/verts.vert");
+  nnstrcpy(vert_dbg_shader->gs_path, "shaders/dbg/verts.geom");
+  nnstrcpy(vert_dbg_shader->fs_path, "shaders/dbg/verts.frag");
   load_shader(vert_dbg_shader);
 
-  load_model_nnm("rig.nnm", &memory);
+  Shader *bone_dbg_shader = &game_state->shaders[game_state->shader_count++];
+  nnstrcpy(bone_dbg_shader->vs_path, "shaders/dbg/bones.vert");
+  nnstrcpy(bone_dbg_shader->gs_path, "shaders/dbg/bones.geom");
+  nnstrcpy(bone_dbg_shader->fs_path, "shaders/dbg/bones.frag");
+  load_shader(bone_dbg_shader);
+
+  load_model("pillar.nnm", &memory);
 
   Camera camera = {
     { 1.0f, 1.0f, 1.0f },
@@ -554,19 +421,23 @@ int32 main(int32 argc, int8 **argv)
     { 0.0f, 1.0f, 0.0f }
   };
 
-  glUseProgram(phong_shader->id);
+  bool32 draw_mesh = true;
+  bool32 debug_vertices = true;
+  bool32 debug_bones = true;
+  bool32 use_bone_transform = true;
 
   camera.view = glm::lookAt(camera.position, camera.target, camera.up);
-  glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
-
   glm::mat4 proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.01f, 1000.0f);
-  glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
-
   glm::mat4 model(1.0f);
   // model = glm::translate(model, glm::vec3(1.0f, 1.0f, 0.0f));
-  glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
 
-  bool32 debug_vertices = false;
+  if (draw_mesh) {
+    glUseProgram(phong_shader->id);
+    glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+    glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
+  }
+
   if (debug_vertices) {
     glUseProgram(vert_dbg_shader->id);
     glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
@@ -574,43 +445,120 @@ int32 main(int32 argc, int8 **argv)
     glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
   }
 
+  if (debug_bones) {
+    glUseProgram(bone_dbg_shader->id);
+    glUniformMatrix4fv(glGetUniformLocation(bone_dbg_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+    glUniformMatrix4fv(glGetUniformLocation(bone_dbg_shader->id, "proj"), 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(glGetUniformLocation(bone_dbg_shader->id, "model"), 1, GL_FALSE, glm::value_ptr(model));
+  }
+
+  persistent KeyBinding key_bindings[] = {
+    { GLFW_KEY_ESCAPE },
+    { GLFW_KEY_F1 },
+    { GLFW_KEY_F2 },
+    { GLFW_KEY_F3 },
+    { GLFW_KEY_F4 }
+  };
+
   while (!glfwWindowShouldClose(window)) {
-    glClearColor(1.0f, 0.7f, 0.3f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glUseProgram(phong_shader->id);
     real64 time = glfwGetTime();
+
+    for (uint16 binding_index = 0; binding_index < nnlen(key_bindings); binding_index++) {
+      KeyBinding *binding = &key_bindings[binding_index];
+      binding->curr_state = glfwGetKey(window, binding->key);
+      uint8 key_state = keystate(binding->curr_state, binding->prev_state);
+
+      if (!key_state)
+        continue;
+
+      switch (binding->key) {
+        case GLFW_KEY_ESCAPE:
+          glfwSetWindowShouldClose(window, true);
+          break;
+        case GLFW_KEY_F1:
+          if (key_state == keydown)
+            draw_mesh = !draw_mesh;
+          break;
+        case GLFW_KEY_F2:
+          if (key_state == keydown)
+            debug_vertices = !debug_vertices;
+          break;
+        case GLFW_KEY_F3:
+          if (key_state == keydown)
+            debug_bones = !debug_bones;
+          break;
+        case GLFW_KEY_F4:
+          if (key_state == keydown)
+            use_bone_transform = !use_bone_transform;
+          break;
+      }
+
+      binding->prev_state = binding->curr_state;
+    }
 
     const real32 radius(10.0f);
     camera.position.x = glm::sin(time) * radius;
     camera.position.z = glm::cos(time) * radius;
     camera.view = glm::lookAt(camera.position, camera.target, camera.up);
-    glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+
+    if (draw_mesh) {
+      glUseProgram(phong_shader->id);
+      glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+      glUniform1ui(glGetUniformLocation(vert_dbg_shader->id, "use_bone_transform"), use_bone_transform);
+    }
 
     if (debug_vertices) {
       glUseProgram(vert_dbg_shader->id);
       glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+      glUniform1ui(glGetUniformLocation(vert_dbg_shader->id, "use_bone_transform"), use_bone_transform);
     }
 
-    for (uint32 i = 0; i < game_state->mesh_count; i++) {
-      glUseProgram(phong_shader->id);
-      Mesh *mesh = &game_state->meshes[i];
+    if (debug_bones) {
+      glUseProgram(bone_dbg_shader->id);
+      glUniformMatrix4fv(glGetUniformLocation(bone_dbg_shader->id, "view"), 1, GL_FALSE, glm::value_ptr(camera.view));
+    }
 
-      for (uint8 j = 0; j < mesh->bone_count; j++) {
+    for (uint32 mesh_index = 0; mesh_index < game_state->mesh_count; mesh_index++) {
+      Mesh *mesh = &game_state->meshes[mesh_index];
+
+      for (uint8 bone_index = 0; bone_index < mesh->bone_count; bone_index++) {
         char uniform_name[40] = {};
-        sprintf_s(uniform_name, sizeof(uniform_name), "bones[%d]", j);
-        glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, uniform_name), 1, GL_FALSE, glm::value_ptr(mesh->bones[j].offset));
+        sprintf_s(uniform_name, sizeof(uniform_name), "bones[%d]", bone_index);
+        Bone *bone = &mesh->bones[bone_index];
+
+        if (draw_mesh) {
+          glUseProgram(phong_shader->id);
+          glm::mat4 bone_transform = bone->bind_transform * bone->inv_bind_transform;
+          glUniformMatrix4fv(glGetUniformLocation(phong_shader->id, uniform_name), 1, GL_TRUE, glm::value_ptr(bone_transform));
+        }
+
         if (debug_vertices) {
-          glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, uniform_name), 1, GL_FALSE, glm::value_ptr(mesh->bones[j].offset));
+          glUseProgram(vert_dbg_shader->id);
+          glm::mat4 bone_transform = bone->bind_transform * bone->inv_bind_transform;
+          glUniformMatrix4fv(glGetUniformLocation(vert_dbg_shader->id, uniform_name), 1, GL_TRUE, glm::value_ptr(bone_transform));
         }
       }
 
-      glUseProgram(phong_shader->id);
       glBindVertexArray(mesh->vao);
-      glDrawElements(GL_TRIANGLES, mesh->index_count, GL_UNSIGNED_INT, 0);
+
+      if (draw_mesh) {
+        glUseProgram(phong_shader->id);
+        glDrawElements(GL_TRIANGLES, mesh->index_count, GL_UNSIGNED_INT, 0);
+      }
+
       if (debug_vertices) {
         glUseProgram(vert_dbg_shader->id);
         glDrawElements(GL_POINTS, mesh->index_count, GL_UNSIGNED_INT, 0);
       }
+
+      if (debug_bones) {
+        glBindVertexArray(mesh->bone_vao);
+        glUseProgram(bone_dbg_shader->id);
+        glDrawArrays(GL_POINTS, 0, mesh->bone_count);
+      }
+
       glBindVertexArray(0);
     }
 

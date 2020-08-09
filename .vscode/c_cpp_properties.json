@@ -5,7 +5,6 @@
       "includePath": [
         "${workspaceFolder}\\**",
         "D:\\libs\\stb",
-        "D:\\libs\\assimp\\include",
         "D:\\libs\\glad\\include",
         "D:\\repo\\glm",
         "D:\\repo\\glfw\\include",

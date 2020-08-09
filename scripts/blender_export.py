@@ -8,23 +8,12 @@ import struct
 
 MAX_WEIGHTS = 4
 
-os.system('cls')
 file_base = os.path.splitext(bpy.data.filepath)[0]
 model_file = '{}.nnm'.format(file_base)
 log_file = '{}.log'.format(file_base)
 y_up_rot = Matrix.Rotation(radians(-90.0), 4, 'X')
 
 log = []
-
-def matrix_world(armature, bone_name):
-    local = armature.data.bones[bone_name].matrix_local
-    basis = armature.pose.bones[bone_name].matrix_basis
-    parent = armature.pose.bones[bone_name].parent
-    if parent is None:
-        return local @ basis
-    else:
-        parent_local = armature.data.bones[parent.name].matrix_local
-        return matrix_world(armature, parent.name) @ (parent_local.inverted() @ local) @ basis
 
 with open(model_file, 'wb') as file:
     for obj in bpy.context.scene.objects:
@@ -36,6 +25,10 @@ with open(model_file, 'wb') as file:
         file.write(struct.pack('<B', mesh_name_len))
         file.write(mesh_name)
         log.append('{} {}'.format(mesh_name_len, mesh_name))
+
+        mesh_world_matrix = list(chain.from_iterable(obj.matrix_world))
+        file.write(struct.pack('<ffffffffffffffff', *mesh_world_matrix))
+        log.append('w {}'.format(mesh_world_matrix))
 
         mesh = bmesh.new()
         mesh.from_mesh(obj.data)
@@ -82,35 +75,41 @@ with open(model_file, 'wb') as file:
 
         if obj.parent and obj.parent.type == 'ARMATURE':
             armature = obj.parent
-            armature.data.pose_position = 'POSE'
-            bones = [b for vg in obj.vertex_groups for b in armature.data.bones if b.name == vg.name]
-            bones.extend([b for b in armature.data.bones if b not in bones])
+            armature.data.pose_position = 'REST'
 
+            armature_world_matrix = list(chain.from_iterable(obj.matrix_world))
+            file.write(struct.pack('<ffffffffffffffff', *armature_world_matrix))
+            log.append('w {}'.format(armature_world_matrix))
+
+            bones = armature.data.bones
             bone_count = len(bones)
             file.write(struct.pack('<H', bone_count))
             log.append('{} bones'.format(bone_count))
 
             for bone in bones:
+                if not bone.use_deform:
+                    continue
+
                 bone_name = bone.name.encode('utf-8')
                 bone_name_len = len(bone_name)
                 file.write(struct.pack('<B', bone_name_len))
                 file.write(bone_name)
                 log.append('b {} {}'.format(bone_name_len, bone_name))
 
-                bone_matrix = armature.matrix_world @ matrix_world(armature, bone.name)
+                bone_matrix = y_up_rot @ bone.matrix_local
                 bone_matrix_list = list(chain.from_iterable(bone_matrix))
                 file.write(struct.pack('<ffffffffffffffff', *bone_matrix_list))
                 log.append(bone_matrix_list)
 
-                # if bone.parent:
-                #     parent_name = bone.parent.name.encode('utf-8')
-                #     parent_name_len = len(parent_name)
-                #     file.write(struct.pack('<B', parent_name_len))
-                #     file.write(parent_name)
-                #     log.append('p {} {}'.format(parent_name_len, parent_name))
-                # else:
-                #     file.write(struct.pack('<B', 0))
-                #     log.append('p 0')
+                if bone.parent:
+                    parent_name = bone.parent.name.encode('utf-8')
+                    parent_name_len = len(parent_name)
+                    file.write(struct.pack('<B', parent_name_len))
+                    file.write(parent_name)
+                    log.append('p {} {}'.format(parent_name_len, parent_name))
+                else:
+                    file.write(struct.pack('<B', 0))
+                    log.append('p 0')
 
         else:
             file.write(struct.pack('<H', 0))
